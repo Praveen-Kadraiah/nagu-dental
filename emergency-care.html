@@ -933,6 +933,7 @@
                         var s = el.getAttribute('style') || '';
                         if (s.indexOf('opacity:0') === -1) return false;
                         if (el.closest('.navbar_wrap') || el.closest('.w-nav') || el.closest('.w-dropdown-list')) return false;
+                        if (el.closest('.section_hero') || el.closest('.section_header')) return false;
                         return true;
                     });
                     els.forEach(function (el) {

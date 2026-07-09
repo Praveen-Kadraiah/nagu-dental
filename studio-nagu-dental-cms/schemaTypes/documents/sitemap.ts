@@ -26,10 +26,10 @@ export default defineType({
       name: 'baseUrl',
       title: 'Website Base URL',
       type: 'url',
-      description: 'The production root URL of the website (e.g. https://nagudental.in).',
+      description: 'The production root URL of the website (e.g. https://nagu-dental-nu.vercel.app).',
       group: 'general',
       validation: (Rule) => Rule.required(),
-      initialValue: 'https://nagudental.in',
+      initialValue: 'https://nagu-dental-nu.vercel.app',
     }),
     defineField({
       name: 'defaultChangefreq',

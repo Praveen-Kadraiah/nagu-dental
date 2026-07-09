@@ -20,6 +20,19 @@ function urlFor(source) {
   return `https://cdn.sanity.io/images/exi81qhl/production/${id}-${dims}.${ext}`;
 }
 
+// Debounce helper to limit function execution frequency
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
 // Helper to dynamically update document title and SEO meta tags
 function updateSEO(seo) {
   if (!seo) return;
@@ -197,15 +210,13 @@ function loadGlobalSettings() {
         }
       });
     }
-
-    reinitializeWebflow();
   });
 }
 
 // 2. Load Testimonials (Homepage slider/marquee)
 function loadTestimonials() {
   const containers = document.querySelectorAll('[data-sanity="testimonials-list"]');
-  if (containers.length === 0) return;
+  if (containers.length === 0) return Promise.resolve();
 
   const query = `*[_type == "testimonial"]{
     author,
@@ -216,7 +227,7 @@ function loadTestimonials() {
     signature
   }`;
 
-  client.fetch(query).then(testimonials => {
+  return client.fetch(query).then(testimonials => {
     if (!testimonials || testimonials.length === 0) return;
 
     const html = testimonials.map(t => `
@@ -243,8 +254,6 @@ function loadTestimonials() {
     containers.forEach(container => {
       container.innerHTML = html;
     });
-
-    reinitializeWebflow();
   });
 }
 
@@ -259,11 +268,11 @@ function loadFaqs() {
   }
 
   const container = document.querySelector('[data-sanity="faqs-list"]');
-  if (!container) return;
+  if (!container) return Promise.resolve();
 
   const query = `*[_type == "faq"]{ question, answer }`;
 
-  client.fetch(query).then(faqs => {
+  return client.fetch(query).then(faqs => {
     if (!faqs || faqs.length === 0) return;
 
     container.innerHTML = faqs.map((faq, idx) => `
@@ -284,7 +293,6 @@ function loadFaqs() {
     `).join('');
 
     bindAccordionClicks();
-    reinitializeWebflow();
   });
 }
 
@@ -350,7 +358,7 @@ function loadHomePage() {
     }
   }`;
 
-  client.fetch(query).then(data => {
+  return client.fetch(query).then(data => {
     if (!data) return;
 
     // SEO Settings
@@ -464,8 +472,6 @@ function loadHomePage() {
         tImg.removeAttribute('srcset');
       }
     }
-
-    reinitializeWebflow();
   });
 }
 
@@ -505,7 +511,7 @@ function loadAboutPage() {
     }
   }`;
 
-  client.fetch(query).then(data => {
+  return client.fetch(query).then(data => {
     if (!data) return;
 
     // SEO Settings
@@ -653,8 +659,6 @@ function loadAboutPage() {
         `;
       }
     }
-
-    reinitializeWebflow();
   });
 }
 
@@ -685,7 +689,7 @@ function loadContactPage() {
     }
   }`;
 
-  client.fetch(query).then(data => {
+  return client.fetch(query).then(data => {
     if (!data) return;
 
     // SEO Settings
@@ -737,15 +741,13 @@ function loadContactPage() {
       if (mLink && map.googleMapsUrl) mLink.href = map.googleMapsUrl;
       if (mIframe && map.embedMapUrl) mIframe.src = map.embedMapUrl;
     }
-
-    reinitializeWebflow();
   });
 }
 
 // 7. Load Treatments main page (Accordion listing)
 function loadTreatmentsPage() {
   const container = document.querySelector('[data-sanity="treatments-list"]');
-  if (!container) return;
+  if (!container) return Promise.resolve();
 
   const query = `*[_type == "treatment"]{
     title,
@@ -754,7 +756,7 @@ function loadTreatmentsPage() {
     heroImage
   }`;
 
-  client.fetch(query).then(treatments => {
+  return client.fetch(query).then(treatments => {
     if (!treatments || treatments.length === 0) return;
 
     container.innerHTML = treatments.map(t => {
@@ -837,7 +839,6 @@ function loadTreatmentsPage() {
     }).join('');
 
     bindTreatmentsAccordionClicks();
-    reinitializeWebflow();
   });
 }
 
@@ -872,7 +873,7 @@ function bindTreatmentsAccordionClicks() {
 function loadTreatmentDetailPage() {
   const titleEl = document.querySelector('[data-sanity="treatment-title"]');
   const descEl = document.querySelector('[data-sanity="treatment-description"]');
-  if (!titleEl && !descEl) return;
+  if (!titleEl && !descEl) return Promise.resolve();
 
   const query = `*[_type == "treatment"]{
     title,
@@ -881,7 +882,7 @@ function loadTreatmentDetailPage() {
     description
   }`;
 
-  client.fetch(query).then(treatments => {
+  return client.fetch(query).then(treatments => {
     if (!treatments || treatments.length === 0) return;
 
     const path = window.location.pathname.toLowerCase();
@@ -918,34 +919,49 @@ function reinitializeWebflow() {
   }
 }
 
-// Routing logic
+// Routing logic that chains all promises and runs Webflow reinit exactly once
 function initPageLoader() {
   const path = window.location.pathname.toLowerCase();
   
-  loadGlobalSettings();
-  loadTestimonials();
-  loadFaqs();
+  const loaders = [
+    loadGlobalSettings(),
+    loadTestimonials(),
+    loadFaqs()
+  ];
 
   if (path === '/' || path.endsWith('/index.html') || path.endsWith('/')) {
-    loadHomePage();
+    loaders.push(loadHomePage());
   } else if (path.includes('about')) {
-    loadAboutPage();
+    loaders.push(loadAboutPage());
   } else if (path.includes('contact')) {
-    loadContactPage();
+    loaders.push(loadContactPage());
   } else if (path.includes('treatments')) {
-    loadTreatmentsPage();
+    loaders.push(loadTreatmentsPage());
   } else {
-    loadTreatmentDetailPage();
+    loaders.push(loadTreatmentDetailPage());
   }
+
+  Promise.all(loaders)
+    .then(() => {
+      reinitializeWebflow();
+    })
+    .catch(err => {
+      console.error("Error executing page loaders:", err);
+      reinitializeWebflow(); // Fallback re-init
+    });
 }
 
 // Initialize on DOM ready
 document.addEventListener('DOMContentLoaded', () => {
   initPageLoader();
 
-  // Listen to mutations on siteSettings, homePage, aboutPage, contactPage, and treatments
-  // and trigger dynamic re-render on save/publish in real-time
-  client.listen('*[_type in ["siteSettings", "homePage", "aboutPage", "contactPage", "treatment"]]').subscribe(() => {
+  // Create a debounced update function for real-time preview (waits 1000ms after you stop typing in CMS)
+  const debouncedRefresh = debounce(() => {
     initPageLoader();
+  }, 1000);
+
+  // Listen to mutations on siteSettings, homePage, aboutPage, contactPage, and treatments
+  client.listen('*[_type in ["siteSettings", "homePage", "aboutPage", "contactPage", "treatment"]]').subscribe(() => {
+    debouncedRefresh();
   });
 });
